@@ -1,0 +1,32 @@
+name: Cargo Publish
+
+on:
+  workflow_dispatch:
+
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: puniyu/setup-rust@5538133d5d4c4f62391aa26fc8934b441fa1d58e # main
+
+      - name: Wait for crates.io index
+        run: sleep 30
+
+      - name: Publish puniyu-skia-bindings
+        run: cargo publish --manifest-path skia-bindings/Cargo.toml --no-verify
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_API_TOKEN }}
+
+      - name: Wait for crates.io index
+        run: sleep 30
+
+      - name: Publish puniyu-skia-safe
+        run: cargo publish --manifest-path skia-safe/Cargo.toml --no-verify
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_API_TOKEN }}
