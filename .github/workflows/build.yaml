@@ -1,0 +1,186 @@
+name: Build Skia-Safe
+
+on:
+  workflow_dispatch:
+
+env:
+  APP_NAME: skia
+  SKIA_DEBUG: 0
+
+jobs:
+  build_windows:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        features: ["","svg" ,"textlayout", "webp", "svg,textlayout,webp"]
+        platform:
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x86_64
+          - runner: windows-latest
+            target: aarch64-pc-windows-msvc
+            label: windows-aarch64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: true
+
+      - name: Setup Rust
+        uses: puniyu/setup-rust@5538133d5d4c4f62391aa26fc8934b441fa1d58e # main
+        with:
+          target: ${{ matrix.platform.target }}
+          cache: true
+          prefix-key: ${{ env.APP_NAME }}
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21.1.8"
+
+      - name: Setup Ninja
+        uses: ashutoshvarma/setup-ninja@v1.1
+        with:
+          version: 1.13.2
+
+      - name: 'Build skia-safe for ${{ matrix.platform.target }} with features "${{ matrix.features }}"'
+        shell: bash
+        run: |
+          cargo build -p puniyu-skia-safe --release --features "${{ matrix.features }}" --target ${{ matrix.platform.target }}
+          echo "SKIA_BINARIES_TAG=$(cat "${BUILD_ARTIFACTSTAGINGDIRECTORY}/skia-binaries/tag.txt")" >> ${GITHUB_ENV}
+          echo "SKIA_BINARIES_KEY=$(cat "${BUILD_ARTIFACTSTAGINGDIRECTORY}/skia-binaries/key.txt")" >> ${GITHUB_ENV}
+          echo "SKIA_STAGING_PATH=${BUILD_ARTIFACTSTAGINGDIRECTORY}" >> ${GITHUB_ENV}
+        env:
+          BUILD_ARTIFACTSTAGINGDIRECTORY: ${{ runner.temp }}
+
+      - name: 'Compress binaries'
+        uses: a7ul/tar-action@v1.1.2
+        with:
+          command: c
+          cwd: '${{ env.SKIA_STAGING_PATH }}'
+          files: 'skia-binaries'
+          outPath: '${{ runner.temp }}/skia-binaries-${{ env.SKIA_BINARIES_KEY }}.tar.gz'
+
+      - name: 'Release binaries'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: '${{ env.SKIA_BINARIES_TAG }}'
+          files: '${{ runner.temp }}/skia-binaries-${{ env.SKIA_BINARIES_KEY }}.tar.gz'
+          prerelease: true
+
+  build_linux:
+    runs-on: ubuntu-latest
+    container: ghcr.io/pragmatrix/rust-skia-linux:latest
+    strategy:
+      matrix:
+        features: ["","svg" ,"textlayout", "webp", "embed-freetype", "svg,textlayout,webp,embed-freetype"]
+        platform:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            label: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            label: linux-aarch64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: true
+
+      - name: Fix git dubious ownership errors when synchronizing Skia dependencies
+        run: git config --global --add safe.directory '*'
+
+      - name: Setup Rust
+        uses: puniyu/setup-rust@5538133d5d4c4f62391aa26fc8934b441fa1d58e # main
+        with:
+          target: ${{ matrix.platform.target }}
+          cache: true
+          prefix-key: ${{ env.APP_NAME }}
+
+      - name: 'Build skia-safe for ${{ matrix.platform.target }} with features "${{ matrix.features }}"'
+        shell: bash
+        run: |
+          cargo build -p puniyu-skia-safe --release --features "${{ matrix.features }}" --target ${{ matrix.platform.target }}
+          echo "SKIA_BINARIES_TAG=$(cat "${BUILD_ARTIFACTSTAGINGDIRECTORY}/skia-binaries/tag.txt")" >> ${GITHUB_ENV}
+          echo "SKIA_BINARIES_KEY=$(cat "${BUILD_ARTIFACTSTAGINGDIRECTORY}/skia-binaries/key.txt")" >> ${GITHUB_ENV}
+          echo "SKIA_STAGING_PATH=${BUILD_ARTIFACTSTAGINGDIRECTORY}" >> ${GITHUB_ENV}
+        env:
+          BUILD_ARTIFACTSTAGINGDIRECTORY: ${{ runner.temp }}
+
+      - name: 'Compress binaries'
+        uses: a7ul/tar-action@v1.1.2
+        with:
+          command: c
+          cwd: '${{ env.SKIA_STAGING_PATH }}'
+          files: 'skia-binaries'
+          outPath: '${{ runner.temp }}/skia-binaries-${{ env.SKIA_BINARIES_KEY }}.tar.gz'
+
+      - name: 'Release binaries'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: '${{ env.SKIA_BINARIES_TAG }}'
+          files: '${{ runner.temp }}/skia-binaries-${{ env.SKIA_BINARIES_KEY }}.tar.gz'
+          prerelease: true
+
+  build_macos:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        features: ["","svg" ,"textlayout", "webp", "svg,textlayout,webp"]
+        platform:
+          - runner: macos-latest
+            target: x86_64-apple-darwin
+            label: macos-x86_64
+          - runner: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-aarch64
+            
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: true
+
+      - name: Setup Rust
+        uses: puniyu/setup-rust@5538133d5d4c4f62391aa26fc8934b441fa1d58e # main
+        with:
+          target: ${{ matrix.platform.target }}
+          cache: true
+          prefix-key: ${{ env.APP_NAME }}
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21.1.8"
+
+      - name: Setup Ninja
+        uses: ashutoshvarma/setup-ninja@v1.1
+        with:
+          version: 1.13.2
+
+      - name: 'Build skia-safe for ${{ matrix.platform.target }} with features "${{ matrix.features }}"'
+        shell: bash
+        run: |
+          cargo build -p puniyu-skia-safe --release --features "${{ matrix.features }}" --target ${{ matrix.platform.target }}
+          echo "SKIA_BINARIES_TAG=$(cat "${BUILD_ARTIFACTSTAGINGDIRECTORY}/skia-binaries/tag.txt")" >> ${GITHUB_ENV}
+          echo "SKIA_BINARIES_KEY=$(cat "${BUILD_ARTIFACTSTAGINGDIRECTORY}/skia-binaries/key.txt")" >> ${GITHUB_ENV}
+          echo "SKIA_STAGING_PATH=${BUILD_ARTIFACTSTAGINGDIRECTORY}" >> ${GITHUB_ENV}
+        env:
+          BUILD_ARTIFACTSTAGINGDIRECTORY: ${{ runner.temp }}
+
+      - name: 'Compress binaries'
+        uses: a7ul/tar-action@v1.1.2
+        with:
+          command: c
+          cwd: '${{ env.SKIA_STAGING_PATH }}'
+          files: 'skia-binaries'
+          outPath: '${{ runner.temp }}/skia-binaries-${{ env.SKIA_BINARIES_KEY }}.tar.gz'
+
+      - name: 'Release binaries'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: '${{ env.SKIA_BINARIES_TAG }}'
+          files: '${{ runner.temp }}/skia-binaries-${{ env.SKIA_BINARIES_KEY }}.tar.gz'
+          prerelease: true
